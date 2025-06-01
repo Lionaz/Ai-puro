@@ -1,0 +1,473 @@
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Kod Asistanı</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background-color: #1a1a2e; /* Koyu mavi-mor arka plan */
+            color: #e0e0e0; /* Açık gri metin */
+        }
+        .header {
+            background-color: #162447; /* Koyu mavi */
+            padding: 1rem 1.5rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1f78b4; /* Açık mavi */
+        }
+        .main-container {
+            display: flex;
+            flex-grow: 1;
+            padding: 1rem;
+            gap: 1rem;
+            flex-wrap: wrap; /* Küçük ekranlarda sarması için */
+        }
+        .panel {
+            background-color: #1e1e3f; /* Biraz daha açık koyu mavi-mor */
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        .input-panel {
+            flex: 1; /* Esnek genişlik */
+            min-width: 300px; /* Minimum genişlik */
+        }
+        .editor-panel {
+            flex: 2; /* Esnek genişlik, daha fazla yer kaplar */
+            min-width: 400px;
+        }
+        .preview-panel {
+            flex: 2; /* Esnek genişlik */
+            min-width: 400px;
+        }
+        textarea, iframe {
+            width: 100%;
+            border: 1px solid #3b3b58; /* Koyu morumsu sınır */
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            background-color: #2a2a4a; /* Editör arka planı */
+            color: #f0f0f0; /* Editör metin rengi */
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9rem;
+        }
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+        iframe {
+            flex-grow: 1;
+            background-color: #ffffff; /* Önizleme için beyaz arka plan */
+        }
+        .tabs button {
+            padding: 0.5rem 1rem;
+            border: none;
+            background-color: #3b3b58;
+            color: #e0e0e0;
+            cursor: pointer;
+            border-radius: 0.375rem 0.375rem 0 0;
+            margin-right: 0.25rem;
+            transition: background-color 0.3s;
+        }
+        .tabs button.active {
+            background-color: #1f78b4; /* Aktif sekme için açık mavi */
+            color: #ffffff;
+        }
+        .tabs button:hover:not(.active) {
+            background-color: #4a4a6a;
+        }
+        .btn {
+            background-color: #1f78b4; /* Açık mavi */
+            color: white;
+            padding: 0.6rem 1.2rem;
+            border: none;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .btn:hover {
+            background-color: #1a5f8a; /* Biraz daha koyu mavi */
+        }
+        .btn-secondary {
+            background-color: #4a4a6a;
+        }
+        .btn-secondary:hover {
+            background-color: #5a5a7a;
+        }
+        .btn-danger {
+            background-color: #e53e3e;
+        }
+        .btn-danger:hover {
+            background-color: #c53030;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1f78b4;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin-right: 8px; /* Buton içindeyse */
+            display: none; /* Başlangıçta gizli */
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 1.5rem;
+            border-radius: 0.375rem;
+            color: white;
+            z-index: 1000;
+            display: none;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .message-box.success { background-color: #48bb78; }
+        .message-box.error { background-color: #f56565; }
+        .message-box.info { background-color: #4299e1; }
+
+        /* Küçük ekranlar için iyileştirmeler */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            .panel {
+                min-width: 100%; /* Tam genişlik */
+            }
+            textarea {
+                min-height: 100px;
+            }
+            .preview-panel iframe {
+                min-height: 300px; /* Önizleme için minimum yükseklik */
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="header">
+        <h1><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-2 lucide lucide-bot"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI Kod Asistanı</h1>
+    </header>
+
+    <div class="main-container">
+        <div class="panel input-panel">
+            <h2 class="text-lg font-semibold mb-2 text-blue-300">Ne Oluşturmak İstersiniz?</h2>
+            <textarea id="userInput" class="flex-grow mb-2" placeholder="Örn: 'Ortasında 'Merhaba Dünya' yazan mavi bir buton oluştur.'"></textarea>
+            <div class="flex items-center justify-between">
+                <button id="generateCodeBtn" class="btn">
+                    <div id="loader" class="loader"></div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wand-2"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L11.8 8.2a1.21 1.21 0 0 0 0 1.72l5.8 5.8a1.21 1.21 0 0 0 1.72 0l6.84-6.84a1.21 1.21 0 0 0 0-1.72Z"/><path d="m14 7.5.76.76a.5.5 0 0 1 0 .71l-5.07 5.07a.5.5 0 0 1-.71 0L8.2 13.29a.5.5 0 0 1 0-.71l5.07-5.07a.5.5 0 0 1 .71 0Z"/><path d="M6.5 11.5 3 15l7 7 3.5-3.5"/><path d="M15 3h6v6"/><path d="M21 16.5a5.5 5.5 0 0 0-3.46-5.12"/></svg>
+                    Kod Oluştur
+                </button>
+                <p class="text-xs text-yellow-400 mt-2 text-right">Not: Sadece etik ve güvenli kod üretilir.</p>
+            </div>
+        </div>
+
+        <div class="panel editor-panel">
+            <div class="tabs mb-2">
+                <button class="tab-button active" data-tab="html">HTML</button>
+                <button class="tab-button" data-tab="css">CSS</button>
+                <button class="tab-button" data-tab="js">JavaScript</button>
+            </div>
+            <div id="htmlContent" class="tab-content">
+                <div class="flex justify-between items-center mb-1">
+                    <h3 class="text-md font-medium text-blue-300">HTML Kodu</h3>
+                    <button class="btn btn-secondary text-xs" onclick="copyCode('htmlCode')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        Kopyala
+                    </button>
+                </div>
+                <textarea id="htmlCode" spellcheck="false"></textarea>
+            </div>
+            <div id="cssContent" class="tab-content" style="display: none;">
+                 <div class="flex justify-between items-center mb-1">
+                    <h3 class="text-md font-medium text-blue-300">CSS Kodu</h3>
+                    <button class="btn btn-secondary text-xs" onclick="copyCode('cssCode')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        Kopyala
+                    </button>
+                </div>
+                <textarea id="cssCode" spellcheck="false"></textarea>
+            </div>
+            <div id="jsContent" class="tab-content" style="display: none;">
+                <div class="flex justify-between items-center mb-1">
+                    <h3 class="text-md font-medium text-blue-300">JavaScript Kodu</h3>
+                    <button class="btn btn-secondary text-xs" onclick="copyCode('jsCode')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        Kopyala
+                    </button>
+                </div>
+                <textarea id="jsCode" spellcheck="false"></textarea>
+            </div>
+        </div>
+
+        <div class="panel preview-panel">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-lg font-semibold text-blue-300">Canlı Önizleme</h2>
+                <button id="refreshPreviewBtn" class="btn btn-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M3 12a9 9 0 0 1 9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                    Yenile
+                </button>
+            </div>
+            <iframe id="previewFrame" title="Canlı Önizleme"></iframe>
+        </div>
+    </div>
+
+    <footer class="text-center p-4 mt-auto">
+        <button id="downloadZipBtn" class="btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            Kodları ZIP Olarak İndir
+        </button>
+    </footer>
+
+    <div id="messageBox" class="message-box"></div>
+
+    <script>
+        const userInput = document.getElementById('userInput');
+        const generateCodeBtn = document.getElementById('generateCodeBtn');
+        const loader = document.getElementById('loader');
+        
+        const htmlCode = document.getElementById('htmlCode');
+        const cssCode = document.getElementById('cssCode');
+        const jsCode = document.getElementById('jsCode');
+        
+        const previewFrame = document.getElementById('previewFrame');
+        const refreshPreviewBtn = document.getElementById('refreshPreviewBtn');
+        const downloadZipBtn = document.getElementById('downloadZipBtn');
+        const messageBox = document.getElementById('messageBox');
+
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        const unethicalKeywords = [
+            "virus", "malware", "trojan", "spyware", "keylogger", "ransomware", 
+            "hack", "exploit", "phishing", "ddos", "botnet", "worm", 
+            "zararlı yazılım", "kötü amaçlı yazılım", "saldırı", "sızma",
+            "çalma", "kopya koruması kırma", "lisanssız"
+        ];
+
+        // Sekme yönetimi
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                
+                const targetTab = button.dataset.tab;
+                tabContents.forEach(content => {
+                    if (content.id === `${targetTab}Content`) {
+                        content.style.display = 'block';
+                    } else {
+                        content.style.display = 'none';
+                    }
+                });
+            });
+        });
+
+        // Mesaj kutusu fonksiyonu
+        function showMessage(message, type = 'info', duration = 3000) {
+            messageBox.textContent = message;
+            messageBox.className = `message-box ${type}`; // Önceki sınıfları temizle ve yenilerini ekle
+            messageBox.style.display = 'block';
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, duration);
+        }
+
+        // Etik kontrol fonksiyonu
+        function isUnethical(promptText) {
+            const lowerPrompt = promptText.toLowerCase();
+            return unethicalKeywords.some(keyword => lowerPrompt.includes(keyword));
+        }
+
+        // Kod üretme butonu olayı
+        generateCodeBtn.addEventListener('click', async () => {
+            const prompt = userInput.value.trim();
+            if (!prompt) {
+                showMessage('Lütfen ne oluşturmak istediğinizi yazın.', 'error');
+                return;
+            }
+
+            if (isUnethical(prompt)) {
+                showMessage('Üzgünüm, bu tür bir istek etik olmayan veya zararlı kod üretimine yol açabilir. Lütfen farklı bir şey deneyin.', 'error', 5000);
+                return;
+            }
+
+            loader.style.display = 'inline-block';
+            generateCodeBtn.disabled = true;
+
+            try {
+                // Gemini API çağrısı
+                // ÖNEMLİ: API anahtarını boş bırakın, Canvas ortamı bunu sağlayacaktır.
+                const apiKey = "AIzaSyB46f1Qn-j6mc1ncQhgSKs6V2tqj0B-TGY"; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const requestPayload = {
+                    contents: [{
+                        parts: [{
+                            text: `Aşağıdaki kullanıcı isteği için HTML, CSS ve JavaScript kodu oluşturun. Sadece etik ve güvenli kod üretin. Yanıtı aşağıdaki JSON formatında verin:
+                            {
+                              "html_code": "",
+                              "css_code": "/* CSS kodunuz buraya */",
+                              "javascript_code": "// JavaScript kodunuz buraya"
+                            }
+                            Eğer istek uygunsuzsa veya yerine getirilemiyorsa, JSON içinde bir hata mesajı verin: {"error": "Hata mesajınız buraya"}.
+                            Kullanıcı isteği: "${prompt}"`
+                        }]
+                    }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                    }
+                };
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestPayload)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('API Error:', errorData);
+                    throw new Error(`API hatası: ${response.status} ${response.statusText}. Detaylar konsolda.`);
+                }
+                
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    
+                    const rawJsonText = result.candidates[0].content.parts[0].text;
+                    // Bazen API'den gelen JSON string'i markdown code block içinde olabilir, bunu temizleyelim.
+                    const cleanedJsonText = rawJsonText.replace(/^```json\s*|```$/g, '').trim();
+
+                    try {
+                        const parsedData = JSON.parse(cleanedJsonText);
+
+                        if (parsedData.error) {
+                            showMessage(`Kod üretilemedi: ${parsedData.error}`, 'error', 5000);
+                            htmlCode.value = ``;
+                            cssCode.value = `/* ${parsedData.error} */`;
+                            jsCode.value = `// ${parsedData.error}`;
+                        } else {
+                            htmlCode.value = parsedData.html_code || "";
+                            cssCode.value = parsedData.css_code || "/* CSS kodu üretilemedi */";
+                            jsCode.value = parsedData.javascript_code || "// JavaScript kodu üretilemedi";
+                            showMessage('Kod başarıyla üretildi!', 'success');
+                            refreshPreview(); // Kodu ürettikten sonra önizlemeyi yenile
+                        }
+                    } catch (parseError) {
+                        console.error("JSON parse hatası:", parseError, "Alınan metin:", cleanedJsonText);
+                        showMessage('API yanıtı işlenirken bir hata oluştu. Yanıt formatı beklenenden farklı olabilir. Lütfen konsolu kontrol edin.', 'error', 7000);
+                        htmlCode.value = "";
+                        cssCode.value = "/* API yanıtı parse edilemedi */";
+                        jsCode.value = "// API yanıtı parse edilemedi */";
+                    }
+                } else {
+                    showMessage('API\'den geçerli bir yanıt alınamadı.', 'error');
+                    htmlCode.value = "";
+                    cssCode.value = "/* API yanıtı alınamadı */";
+                    jsCode.value = "// API yanıtı alınamadı */";
+                }
+
+            } catch (error) {
+                console.error('Kod üretme hatası:', error);
+                showMessage(`Bir hata oluştu: ${error.message}`, 'error', 7000);
+                htmlCode.value = ``;
+                cssCode.value = `/* Hata: ${error.message} */`;
+                jsCode.value = `// Hata: ${error.message} */`;
+            } finally {
+                loader.style.display = 'none';
+                generateCodeBtn.disabled = false;
+            }
+        });
+
+        // Önizlemeyi yenileme fonksiyonu
+        function refreshPreview() {
+            const fullHtml = `
+                <html>
+                <head>
+                    <style>${cssCode.value}</style>
+                </head>
+                <body>
+                    ${htmlCode.value}
+                    <script>${jsCode.value}<\/script> 
+                </body>
+                </html>
+            `;
+            // XSS riskini azaltmak için srcdoc kullanıyoruz.
+            previewFrame.srcdoc = fullHtml;
+            showMessage('Önizleme yenilendi.', 'info', 1500);
+        }
+        refreshPreviewBtn.addEventListener('click', refreshPreview);
+
+        // Kod kopyalama fonksiyonu
+        window.copyCode = function(elementId) {
+            const textarea = document.getElementById(elementId);
+            textarea.select();
+            textarea.setSelectionRange(0, 99999); // Mobil cihazlar için
+            try {
+                document.execCommand('copy');
+                showMessage(`${elementId.toUpperCase()} panoya kopyalandı!`, 'success');
+            } catch (err) {
+                showMessage('Kopyalama başarısız oldu.', 'error');
+                console.error('Kopyalama hatası:', err);
+            }
+            window.getSelection().removeAllRanges(); // Seçimi temizle
+        }
+
+        // ZIP olarak indirme fonksiyonu
+        downloadZipBtn.addEventListener('click', () => {
+            const zip = new JSZip();
+            zip.file("index.html", htmlCode.value);
+            zip.file("style.css", cssCode.value);
+            zip.file("script.js", jsCode.value);
+
+            zip.generateAsync({type:"blob"})
+            .then(function(content) {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = "ai_kod_asistani_projesi.zip";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showMessage('Proje ZIP olarak indiriliyor...', 'success');
+            })
+            .catch(err => {
+                showMessage('ZIP oluşturulurken hata oluştu.', 'error');
+                console.error("ZIP oluşturma hatası:", err);
+            });
+        });
+
+        // Sayfa yüklendiğinde varsayılan bir mesaj gösterelim
+        htmlCode.value = "";
+        cssCode.value = "/* CSS stilleriniz burada görünecek */";
+        jsCode.value = "// JavaScript fonksiyonlarınız burada görünecek";
+        refreshPreview(); // Başlangıçta boş bir önizleme göster
+        
+    </script>
+</body>
+</html>
